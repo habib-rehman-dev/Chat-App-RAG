@@ -1,4 +1,7 @@
 # Environment files
+# any sort of environment file should be ignored in the root of the project folders also like .env, .env.local, .env.development, etc.
+
+
 .env
 .env.*
 !.env.example
