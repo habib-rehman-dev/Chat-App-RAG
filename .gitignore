@@ -1,0 +1,27 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Backend local/generated data
+Backend/local.db
+Backend/local-dev.db
+Backend/chroma_db/
+
+# Node / Next.js
+Frontend/node_modules/
+Frontend/.next/
+Frontend/out/
+Frontend/coverage/
+Frontend/.tsbuildinfo
+
+# Local tooling and OS files
+.DS_Store
+*.log
+.vscode/
