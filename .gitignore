@@ -28,3 +28,7 @@ Frontend/.tsbuildinfo
 .DS_Store
 *.log
 .vscode/
+
+
+Backend/codebase.md
+Backend/digest.txt
