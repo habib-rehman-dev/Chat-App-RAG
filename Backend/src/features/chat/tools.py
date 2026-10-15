@@ -18,7 +18,7 @@ weather_tool = FunctionTool(
     fn=get_weather,
 )
 
-# Query engine tool built from the lazy singleton — no import-time work.
+
 query_engine_tool = QueryEngineTool.from_defaults(
     query_engine=get_query_engine(),
     name="query_engine_tool",

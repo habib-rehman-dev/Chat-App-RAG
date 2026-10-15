@@ -1,42 +1,3 @@
-# # pylint: disable=invalid-name
-
-# import chromadb
-# from llama_index.core import Settings, SimpleDirectoryReader, StorageContext, VectorStoreIndex
-# from llama_index.vector_stores.chroma import ChromaVectorStore
-# from llama_index.llms.groq import Groq
-# from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-# from src.core.config import get_settings
-
-
-# settings = get_settings()
-
-# Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-# Settings.llm = Groq(
-#     model=settings.llm_model_name,
-#     api_key=settings.LLM_API_KEY,
-#     temperature=settings.llm_model_temperature,
-# )
-
-# chroma_client = chromadb.PersistentClient(path="./chroma_db")
-
-# chroma_collection = chroma_client.get_or_create_collection(name="my_collection")
-
-# vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-
-# storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-# documents = SimpleDirectoryReader(input_dir="data").load_data()
-
-# index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
-
-# # index = VectorStoreIndex.from_vector_store(vector_store)
-
-# query_engine = index.as_query_engine()
-
-
-# src/core/vectorStoreIndex.py
-# pylint: disable=invalid-name
-
 import logging
 from functools import lru_cache
 
@@ -73,7 +34,11 @@ Settings.chunk_overlap = settings.chunk_overlap
 @lru_cache(maxsize=1)
 def _get_chroma_collection() -> chromadb.Collection:
     """Open (or create) the persistent Chroma collection. Cached per-process."""
-    client = chromadb.PersistentClient(path=settings.chroma_path)
+    client = chromadb.CloudClient(
+        api_key="ck-DGV8mZ2YETv2B9w7hEaafkQcUDhmFLXT1ckriMNAGtxv",
+        tenant="a31a287f-c513-4fa6-8960-e27a89b2d2e7",
+        database="rag_vector_store",
+    )
     return client.get_or_create_collection(name=settings.chroma_collection)
 
 

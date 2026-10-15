@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.core.config import get_settings
 from src.core.vectorStoreIndex import warm_up
 from src.features.chat.router import router as chat_router
+from src.features.documents.router import router as documents_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +45,7 @@ app.add_middleware(
     expose_headers=["X-Chat-Id", "x-vercel-ai-data-stream"],
 )
 
+app.include_router(prefix="/api", router=documents_router)
 app.include_router(prefix="/api", router=chat_router)
 
 
