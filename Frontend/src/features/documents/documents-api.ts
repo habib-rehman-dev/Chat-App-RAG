@@ -1,9 +1,9 @@
 /**
  * Document API — talks to Next.js proxy routes, which forward to FastAPI.
  *
- *   POST   /api/documents              multipart "file"  → upload + start ingestion
- *   GET    /api/documents              → list this user's files with status
- *   DELETE /api/documents/:id          → delete file + vectors
+ *   POST   documents/upload              multipart "file"  → upload + start ingestion
+ *   GET    documents/upload              → list this user's files with status
+ *   DELETE documents/upload/:id          → delete file + vectors
  */
 
 export interface RemoteDoc {
@@ -28,7 +28,6 @@ export const documentsApi = {
   async upload(file: File): Promise<{ document_id: string; status: string }> {
     const body = new FormData();
     body.append("file", file);
-
     const res = await fetch("/api/documents", { method: "POST", body });
     if (!res.ok) throw new Error(await readError(res));
     return (await res.json()) as { document_id: string; status: string };
@@ -41,10 +40,9 @@ export const documentsApi = {
     return Array.isArray(data) ? data : data.documents;
   },
 
-  async remove(id: string): Promise<void> {
-    const res = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) throw new Error(await readError(res));
-  },
+ async remove(id: string): Promise<void> {
+  const res = await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+  // 404 means the server doesn't have it (failed upload, deleted elsewhere): goal reached.
+  if (!res.ok && res.status !== 404) throw new Error(await readError(res));
+},
 };

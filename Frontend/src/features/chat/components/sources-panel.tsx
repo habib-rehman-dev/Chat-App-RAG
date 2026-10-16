@@ -1,5 +1,5 @@
 "use client";
-
+import { RotateCw } from "lucide-react";
 import { useRef, useState } from "react";
 import {
   FileSpreadsheet,
@@ -23,12 +23,14 @@ interface SourcesPanelProps {
   onToggleAll: (checked: boolean) => void;
   onAddFiles: (files: File[]) => void;
   onRemove: (id: string) => void;
+  onRetry: (id: string) => void;
 }
 
 function DocIcon({ doc }: { doc: DocItem }) {
   const name = doc.name.toLowerCase();
   if (doc.mime.startsWith("image/")) return <ImageIcon className="size-4" />;
-  if (/\.(csv|xlsx?|tsv)$/.test(name)) return <FileSpreadsheet className="size-4" />;
+  if (/\.(csv|xlsx?|tsv)$/.test(name))
+    return <FileSpreadsheet className="size-4" />;
   return <FileText className="size-4" />;
 }
 
@@ -39,6 +41,7 @@ export function SourcesPanel({
   onToggleAll,
   onAddFiles,
   onRemove,
+  onRetry,
 }: SourcesPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -61,7 +64,8 @@ export function SourcesPanel({
         setDragging(true);
       }}
       onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+        if (!e.currentTarget.contains(e.relatedTarget as Node))
+          setDragging(false);
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -98,8 +102,12 @@ export function SourcesPanel({
           )}
         >
           <Upload className="size-6" />
-          <span className="font-medium text-foreground">Saved sources appear here</span>
-          <span>Drop any file, or click to choose. Chat answers will cite them.</span>
+          <span className="font-medium text-foreground">
+            Saved sources appear here
+          </span>
+          <span>
+            Drop any file, or click to choose. Chat answers will cite them.
+          </span>
         </button>
       ) : (
         <>
@@ -131,7 +139,8 @@ export function SourcesPanel({
                   <span
                     className={cn(
                       "flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground",
-                      doc.status === "failed" && "bg-destructive/10 text-destructive",
+                      doc.status === "failed" &&
+                        "bg-destructive/10 text-destructive",
                     )}
                   >
                     {doc.status === "failed" ? (
@@ -155,7 +164,8 @@ export function SourcesPanel({
                     >
                       {doc.status === "uploading" && "Uploading…"}
                       {doc.status === "indexing" && "Indexing…"}
-                      {doc.status === "failed" && (doc.error ?? "Upload failed")}
+                      {doc.status === "failed" &&
+                        (doc.error ?? "Upload failed")}
                       {isReady && formatBytes(doc.size)}
                     </p>
                   </div>
@@ -163,13 +173,29 @@ export function SourcesPanel({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="opacity-0 transition-opacity group-hover/doc:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+                    className={cn(
+                      "transition-opacity focus-visible:opacity-100 max-md:opacity-100",
+                      doc.status === "failed"
+                        ? "opacity-100"
+                        : "opacity-0 group-hover/doc:opacity-100",
+                    )}
+                    // className="opacity-0 transition-opacity group-hover/doc:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
                     onClick={() => onRemove(doc.id)}
                     aria-label={`Remove ${doc.name}`}
                   >
                     <Trash2 />
                   </Button>
-
+                  {doc.status === "failed" && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => onRetry(doc.id)}
+                      aria-label={`Retry ${doc.name}`}
+                      title="Retry upload"
+                    >
+                      <RotateCw />
+                    </Button>
+                  )}
                   <Checkbox
                     checked={checked && isReady}
                     disabled={!isReady}

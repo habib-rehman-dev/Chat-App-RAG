@@ -1,0 +1,1932 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: src/**/*.ts, src/**/*.tsx
+- Files matching these patterns are excluded: src/components/ui/**, public/**, tsconfig.tsbuildinfo, package-lock.json
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+src/
+  app/
+    (auth)/
+      login/
+        page.tsx
+      register/
+        page.tsx
+    api/
+      [...nextauth]/
+        route.ts
+      chat/
+        route.ts
+      documents/
+        [id]/
+          route.ts
+        route.ts
+    chat/
+      page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    sessionProvider.tsx
+  features/
+    auth/
+      components/
+        auth-card.tsx
+    chat/
+      components/
+        chat-header.tsx
+        chat-message.tsx
+        chat-view.tsx
+        chats-panel.tsx
+        sources-panel.tsx
+        workspace.tsx
+      sessions-api.ts
+      storage.ts
+      types.ts
+      use-sessions.ts
+    documents/
+      documents-api.ts
+  hooks/
+    use-mobile.ts
+  lib/
+    utils.ts
+  auth.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="src/app/(auth)/login/page.tsx">
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { AuthCard } from "@/features/auth/components/auth-card";
+
+export default async function LoginPage() {
+  const session = await auth();
+  if (session?.user) redirect("/chat");
+
+  return <AuthCard mode="login" />;
+}
+</file>
+
+<file path="src/app/(auth)/register/page.tsx">
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { AuthCard } from "@/features/auth/components/auth-card";
+
+export default async function RegisterPage() {
+  const session = await auth();
+  if (session?.user) redirect("/chat");
+
+  return <AuthCard mode="register" />;
+}
+</file>
+
+<file path="src/app/api/[...nextauth]/route.ts">
+import { handlers } from "@/auth";
+
+const { GET, POST } = handlers;
+
+export { GET, POST };
+</file>
+
+<file path="src/app/api/chat/route.ts">
+import { cookies } from "next/headers";
+import { auth } from "@/auth";
+
+const backendUrl = (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) {
+    return Response.json({ detail: "Unauthorized" }, { status: 401 });
+  }
+
+  const jar = await cookies();
+  const token =
+    jar.get("__Secure-authjs.session-token")?.value ?? jar.get("authjs.session-token")?.value;
+  if (!token) {
+    return Response.json({ detail: "Missing session token" }, { status: 401 });
+  }
+
+  // Body from the frontend: { id, messages, trigger, chatId, documentIds }
+  const body = await req.text();
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${backendUrl}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body,
+      signal: req.signal,
+    });
+  } catch {
+    return Response.json({ detail: "Backend is unreachable" }, { status: 502 });
+  }
+
+  // Surface upstream failures as real errors instead of an empty stream.
+  if (!upstream.ok || !upstream.body) {
+    const detail = (await upstream.text().catch(() => "")) || "Upstream error";
+    return Response.json({ detail }, { status: upstream.status || 502 });
+  }
+
+  return new Response(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "x-vercel-ai-ui-message-stream": "v1",
+    },
+  });
+}
+</file>
+
+<file path="src/app/api/documents/[id]/route.ts">
+import { cookies } from "next/headers";
+import { auth } from "@/auth";
+
+const backendUrl = (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return Response.json({ detail: "Unauthorized" }, { status: 401 });
+  }
+
+  const jar = await cookies();
+  const token =
+    jar.get("__Secure-authjs.session-token")?.value ??
+    jar.get("authjs.session-token")?.value;
+  if (!token) {
+    return Response.json({ detail: "Missing session token" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+const upstream = await fetch(
+  `${backendUrl}/api/documents/${encodeURIComponent(id)}`,
+  { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+);
+
+  const text = await upstream.text();
+  return new Response(text, {
+    status: upstream.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+</file>
+
+<file path="src/app/api/documents/route.ts">
+import { cookies } from "next/headers";
+import { auth } from "@/auth";
+
+const backendUrl = (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+async function getToken() {
+  const jar = await cookies();
+  return (
+    jar.get("__Secure-authjs.session-token")?.value ??
+    jar.get("authjs.session-token")?.value ??
+    null
+  );
+}
+
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) return Response.json({ detail: "Unauthorized" }, { status: 401 });
+
+  const token = await getToken();
+  if (!token) return Response.json({ detail: "Missing session token" }, { status: 401 });
+
+  const formData = await req.formData();
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return Response.json({ detail: "No file provided" }, { status: 400 });
+  }
+
+  const upstreamForm = new FormData();
+  upstreamForm.append("file", file, file.name);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${backendUrl}/api/documents/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: upstreamForm,
+      signal: req.signal,
+    });
+  } catch {
+    return Response.json({ detail: "Backend is unreachable" }, { status: 502 });
+  }
+
+  const text = await upstream.text();
+  return new Response(text, {
+    status: upstream.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export async function GET(req: Request) {
+  const session = await auth();
+  if (!session?.user) return Response.json({ detail: "Unauthorized" }, { status: 401 });
+
+  const token = await getToken();
+  if (!token) return Response.json({ detail: "Missing session token" }, { status: 401 });
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${backendUrl}/api/documents`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: req.signal,
+    });
+  } catch {
+    return Response.json({ detail: "Backend is unreachable" }, { status: 502 });
+  }
+
+  const text = await upstream.text();
+  return new Response(text, {
+    status: upstream.status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+</file>
+
+<file path="src/app/chat/page.tsx">
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { Workspace } from "@/features/chat/components/workspace";
+
+export default async function ChatPage() {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const u = session.user;
+  return (
+    <Workspace
+      user={{
+        id: u.id ?? u.email ?? "me",
+        name: u.name ?? "User",
+        email: u.email ?? "",
+        image: u.image ?? "",
+      }}
+    />
+  );
+}
+</file>
+
+<file path="src/app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
+import "./globals.css";
+import { cn } from "@/lib/utils";
+import CustomSessionProvider from "@/components/sessionProvider";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+
+export const metadata: Metadata = {
+  title: "RAG Workspace",
+  description: "Ask questions about your private documents.",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="en"
+      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
+    >
+      {/* Provider belongs inside <body>, not around it */}
+      <body className="flex min-h-full flex-col">
+        <CustomSessionProvider>{children}</CustomSessionProvider>
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="src/app/page.tsx">
+import { redirect } from "next/navigation";
+
+export default function Home() {
+  redirect("/chat");
+}
+</file>
+
+<file path="src/components/sessionProvider.tsx">
+'use client'
+
+import { SessionProvider } from 'next-auth/react';
+
+interface SessionProviderProps {
+  children: React.ReactNode; 
+}
+
+const CustomSessionProvider: React.FC<SessionProviderProps> =  ({ children }) => {
+ 
+  return (
+    <SessionProvider >
+      {children}
+    </SessionProvider>
+  );
+};
+
+export default CustomSessionProvider;
+</file>
+
+<file path="src/features/auth/components/auth-card.tsx">
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+type Mode = "login" | "register";
+type Provider = "github" | "google";
+
+const copy = {
+  login: {
+    title: "Welcome back",
+    description: "Sign in to chat with your documents",
+    verb: "Continue with",
+    footerText: "Don't have an account?",
+    footerLink: "Sign up",
+    footerHref: "/register",
+  },
+  register: {
+    title: "Create your account",
+    description: "Sign up to upload documents and chat with them",
+    verb: "Sign up with",
+    footerText: "Already have an account?",
+    footerLink: "Sign in",
+    footerHref: "/login",
+  },
+} as const;
+
+function GitHubIcon() {
+  return (
+    <svg className="size-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
+    </svg>
+  );
+}
+
+export function AuthCard({ mode }: { mode: Mode }) {
+  const c = copy[mode];
+  const [pending, setPending] = useState<Provider | null>(null);
+
+  async function handle(provider: Provider) {
+    setPending(provider);
+    try {
+      // OAuth redirects away on success; reset only if the call returns/fails.
+      await signIn(provider, { redirectTo: "/chat" });
+    } finally {
+      setPending(null);
+    }
+  }
+
+  const buttons: { provider: Provider; label: string; icon: React.ReactNode }[] = [
+    { provider: "github", label: "GitHub", icon: <GitHubIcon /> },
+    { provider: "google", label: "Google", icon: <GoogleIcon /> },
+  ];
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">{c.title}</CardTitle>
+          <CardDescription>{c.description}</CardDescription>
+        </CardHeader>
+
+        <CardContent className="grid gap-3">
+          {buttons.map(({ provider, label, icon }) => (
+            <Button
+              key={provider}
+              variant="outline"
+              className="h-10 w-full"
+              disabled={pending !== null}
+              onClick={() => handle(provider)}
+            >
+              {pending === provider ? <Spinner /> : icon}
+              {c.verb} {label}
+            </Button>
+          ))}
+        </CardContent>
+
+        <CardFooter className="justify-center gap-1 text-sm text-muted-foreground">
+          {c.footerText}
+          <Link href={c.footerHref} className="font-medium text-primary hover:underline">
+            {c.footerLink}
+          </Link>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/chat-header.tsx">
+"use client";
+
+import { signOut } from "next-auth/react";
+import { Eraser, LogOut, PanelLeft, Trash2, User as UserIcon } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { ChatUser } from "../types";
+
+interface ChatHeaderProps {
+  user: ChatUser;
+  title: string;
+  sourceCount: number;
+  hasMessages: boolean;
+  onOpenSidebar: () => void;
+  onClear: () => void;
+  onDelete: () => void;
+}
+
+export function ChatHeader({
+  user,
+  title,
+  sourceCount,
+  hasMessages,
+  onOpenSidebar,
+  onClear,
+  onDelete,
+}: ChatHeaderProps) {
+  const initials = user.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <header className="flex items-center gap-2 border-b bg-background px-3 py-2.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="md:hidden"
+        onClick={onOpenSidebar}
+        aria-label="Open sources and chats"
+      >
+        <PanelLeft />
+      </Button>
+
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-sm font-medium">{title}</h1>
+        <p className="text-xs text-muted-foreground">
+          {sourceCount === 0
+            ? "No sources selected"
+            : `${sourceCount} ${sourceCount === 1 ? "source" : "sources"} selected`}
+        </p>
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onClear}
+        disabled={!hasMessages}
+        title="Clear messages"
+        aria-label="Clear messages"
+      >
+        <Eraser />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onDelete}
+        title="Delete chat"
+        aria-label="Delete chat"
+      >
+        <Trash2 />
+      </Button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button variant="ghost" className="size-9 rounded-full p-0" aria-label="Account">
+              <Avatar className="size-8">
+                {user.image && <AvatarImage src={user.image} alt={user.name} />}
+                <AvatarFallback className="bg-secondary">
+                  {initials || <UserIcon className="size-4" />}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium leading-none">{user.name}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+              </div>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+            >
+              <LogOut />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </header>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/chat-message.tsx">
+"use client";
+
+import { useState } from "react";
+import type { UIMessage } from "ai";
+import { Check, Copy, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+/* ---------- minimal markdown: fenced code, `inline`, **bold** ---------- */
+
+function Inline({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/g).map((t, i) => {
+        if (t.length > 1 && t.startsWith("`") && t.endsWith("`")) {
+          return (
+            <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+              {t.slice(1, -1)}
+            </code>
+          );
+        }
+        if (t.length > 4 && t.startsWith("**") && t.endsWith("**")) {
+          return <strong key={i}>{t.slice(2, -2)}</strong>;
+        }
+        return t;
+      })}
+    </>
+  );
+}
+
+function RichText({ text }: { text: string }) {
+  // The `$` alternative keeps a still-streaming (unclosed) fence rendering as code.
+  const blocks = text.split(/(```[\s\S]*?(?:```|$))/g).filter(Boolean);
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, i) =>
+        block.startsWith("```") ? (
+          <pre
+            key={i}
+            className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[0.85em] leading-relaxed"
+          >
+            <code>{block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")}</code>
+          </pre>
+        ) : (
+          <p key={i} className="whitespace-pre-wrap wrap-break-word">
+            <Inline text={block} />
+          </p>
+        ),
+      )}
+    </div>
+  );
+}
+
+/* ---------- message ---------- */
+
+interface Citation {
+  key: string;
+  label: string;
+  href?: string;
+}
+
+function getCitations(message: UIMessage): Citation[] {
+  const seen = new Set<string>();
+  const out: Citation[] = [];
+  for (const p of message.parts) {
+    if (p.type === "source-document") {
+      const label = p.filename ?? p.title;
+      if (!seen.has(p.sourceId)) {
+        seen.add(p.sourceId);
+        out.push({ key: p.sourceId, label });
+      }
+    } else if (p.type === "source-url") {
+      if (!seen.has(p.url)) {
+        seen.add(p.url);
+        out.push({ key: p.url, label: p.title ?? p.url, href: p.url });
+      }
+    }
+  }
+  return out;
+}
+
+export function ChatMessage({ message }: { message: UIMessage }) {
+  const [copied, setCopied] = useState(false);
+  const isUser = message.role === "user";
+
+  const text = message.parts
+    .flatMap((p) => (p.type === "text" ? [p.text] : []))
+    .join("");
+  const reasoning = message.parts
+    .flatMap((p) => (p.type === "reasoning" ? [p.text] : []))
+    .join("");
+  const citations = isUser ? [] : getCitations(message);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  if (!text && !reasoning && citations.length === 0) return null;
+
+  return (
+    <div className={cn("group/msg flex flex-col gap-1.5", isUser ? "items-end" : "items-start")}>
+      {reasoning && (
+        <details className="max-w-full text-sm text-muted-foreground">
+          <summary className="cursor-pointer select-none">Thought process</summary>
+          <p className="mt-1 whitespace-pre-wrap">{reasoning}</p>
+        </details>
+      )}
+
+      {text && (
+        <div
+          className={cn(
+            "max-w-full text-sm leading-relaxed",
+            isUser
+              ? "max-w-[85%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-primary-foreground"
+              : "w-full",
+          )}
+        >
+          {isUser ? (
+            <p className="whitespace-pre-wrap wrap-break-word">{text}</p>
+          ) : (
+            <RichText text={text} />
+          )}
+        </div>
+      )}
+
+      {citations.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {citations.map((c, i) => {
+            const chip = (
+              <>
+                <span className="font-medium">{i + 1}</span>
+                <FileText className="size-3" />
+                <span className="max-w-48 truncate">{c.label}</span>
+              </>
+            );
+            const cls =
+              "inline-flex items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-xs text-muted-foreground";
+            return c.href ? (
+              <a key={c.key} href={c.href} target="_blank" rel="noreferrer" className={cn(cls, "hover:text-foreground")}>
+                {chip}
+              </a>
+            ) : (
+              <span key={c.key} className={cls} title={c.label}>
+                {chip}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {!isUser && text && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={copy}
+          className="opacity-0 transition-opacity group-hover/msg:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+          aria-label="Copy answer"
+        >
+          {copied ? <Check className="text-green-600" /> : <Copy />}
+        </Button>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/chat-view.tsx">
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import { ArrowUp, RefreshCw, Square, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
+import { ChatHeader } from "./chat-header";
+import { ChatMessage } from "./chat-message";
+import type { ChatUser, DocItem } from "../types";
+
+// Module-level: one transport instance, not one per render.
+const transport = new DefaultChatTransport({ api: "/api/chat" });
+
+interface ChatViewProps {
+  sessionId: string;
+  title: string;
+  initialMessages: UIMessage[];
+  user: ChatUser;
+  selectedDocs: DocItem[];
+  onTurnFinished: (sessionId: string, messages: UIMessage[]) => void;
+  onOpenSidebar: () => void;
+  onRequestDelete: () => void;
+}
+
+export function ChatView({
+  sessionId,
+  title,
+  initialMessages,
+  user,
+  selectedDocs,
+  onTurnFinished,
+  onOpenSidebar,
+  onRequestDelete,
+}: ChatViewProps) {
+  const [input, setInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+  const lastSaved = useRef(initialMessages);
+
+  const { messages, sendMessage, status, stop, error, regenerate, setMessages } = useChat({
+    id: sessionId,
+    messages: initialMessages,
+    transport,
+  });
+
+  const busy = status === "submitted" || status === "streaming";
+  // Sent with every request so the backend can filter retrieval to these files.
+  const requestBody = { session_id: sessionId, documentIds: selectedDocs.map((d) => d.id) };
+
+  // Persist once a turn settles (not on every streamed token).
+  useEffect(() => {
+    if ((status === "ready" || status === "error") && messages !== lastSaved.current) {
+      lastSaved.current = messages;
+      onTurnFinished(sessionId, messages);
+    }
+  }, [status, messages, sessionId, onTurnFinished]);
+
+  // Auto-scroll only while the reader is already near the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [messages, status]);
+
+  const submit = () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    stickToBottom.current = true;
+    sendMessage({ text }, { body: requestBody });
+    setInput("");
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ChatHeader
+        user={user}
+        title={title}
+        sourceCount={selectedDocs.length}
+        hasMessages={messages.length > 0}
+        onOpenSidebar={onOpenSidebar}
+        onClear={() => setMessages([])}
+        onDelete={onRequestDelete}
+      />
+
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
+        <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {messages.length === 0 && !error ? (
+            <div className="m-auto flex max-w-sm flex-col items-center gap-2 text-center">
+              <Sparkles className="size-6 text-muted-foreground" />
+              <h2 className="text-base font-medium">Ask about your sources</h2>
+              <p className="text-sm text-muted-foreground">
+                {selectedDocs.length === 0
+                  ? "Add files in the sidebar and tick the ones to include."
+                  : "Answers are drawn from the files ticked in the sidebar and cite where they came from."}
+              </p>
+            </div>
+          ) : (
+            messages.map((m) => <ChatMessage key={m.id} message={m} />)
+          )}
+
+          {/* Only before the first token arrives */}
+          {status === "submitted" && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner /> Searching your sources…
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">{error.message || "Something went wrong."}</p>
+              <Button variant="outline" size="sm" onClick={() => regenerate({ body: requestBody })}>
+                <RefreshCw /> Retry
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="border-t bg-background p-3">
+        <form
+          className="mx-auto flex max-w-3xl items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Ask a question about your sources"
+            rows={1}
+            className="max-h-40 min-h-9 flex-1 resize-none"
+            aria-label="Message"
+          />
+          {busy ? (
+            <Button type="button" variant="destructive" size="icon-lg" onClick={() => stop()} aria-label="Stop generating">
+              <Square />
+            </Button>
+          ) : (
+            <Button type="submit" size="icon-lg" disabled={!input.trim()} aria-label="Send message">
+              <ArrowUp />
+            </Button>
+          )}
+        </form>
+        <p className="mx-auto mt-1.5 max-w-3xl text-center text-xs text-muted-foreground">
+          Enter to send, Shift+Enter for a new line
+        </p>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/chats-panel.tsx">
+"use client";
+
+import { MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { SessionSummary } from "../types";
+
+interface ChatsPanelProps {
+  chats: SessionSummary[];
+  activeId?: string;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onDelete: (id: string) => void;
+}
+
+export function ChatsPanel({ chats, activeId, onSelect, onNew, onDelete }: ChatsPanelProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="p-3">
+        <Button variant="outline" className="h-9 w-full" onClick={onNew}>
+          <Plus />
+          New chat
+        </Button>
+      </div>
+
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
+        {chats.map((chat) => (
+          <li
+            key={chat.id}
+            className={cn(
+              "group/chat flex items-center gap-1 rounded-lg pe-1 hover:bg-muted/60",
+              chat.id === activeId && "bg-muted",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(chat.id)}
+              className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-start text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-lg"
+            >
+              <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{chat.title}</span>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="opacity-0 transition-opacity group-hover/chat:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+              onClick={() => onDelete(chat.id)}
+              aria-label={`Delete chat ${chat.title}`}
+            >
+              <Trash2 />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/sources-panel.tsx">
+"use client";
+
+import { useRef, useState } from "react";
+import {
+  FileSpreadsheet,
+  FileText,
+  ImageIcon,
+  Plus,
+  Trash2,
+  TriangleAlert,
+  Upload,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
+import { cn, formatBytes } from "@/lib/utils";
+import type { DocItem } from "../types";
+
+interface SourcesPanelProps {
+  docs: DocItem[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onToggleAll: (checked: boolean) => void;
+  onAddFiles: (files: File[]) => void;
+  onRemove: (id: string) => void;
+}
+
+function DocIcon({ doc }: { doc: DocItem }) {
+  const name = doc.name.toLowerCase();
+  if (doc.mime.startsWith("image/")) return <ImageIcon className="size-4" />;
+  if (/\.(csv|xlsx?|tsv)$/.test(name)) return <FileSpreadsheet className="size-4" />;
+  return <FileText className="size-4" />;
+}
+
+export function SourcesPanel({
+  docs,
+  selectedIds,
+  onToggle,
+  onToggleAll,
+  onAddFiles,
+  onRemove,
+}: SourcesPanelProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const ready = docs.filter((d) => d.status === "ready");
+  const selectedCount = ready.filter((d) => selectedIds.includes(d.id)).length;
+  const allChecked = ready.length > 0 && selectedCount === ready.length;
+  const someChecked = selectedCount > 0 && !allChecked;
+
+  const pick = (list: FileList | null) => {
+    if (list?.length) onAddFiles(Array.from(list));
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        pick(e.dataTransfer.files);
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => pick(e.target.files)}
+      />
+
+      <div className="p-3">
+        <Button
+          variant="outline"
+          className="h-9 w-full"
+          onClick={() => inputRef.current?.click()}
+        >
+          <Plus />
+          Add sources
+        </Button>
+      </div>
+
+      {docs.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className={cn(
+            "mx-3 flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50",
+            dragging && "border-primary bg-muted/60 text-foreground",
+          )}
+        >
+          <Upload className="size-6" />
+          <span className="font-medium text-foreground">Saved sources appear here</span>
+          <span>Drop any file, or click to choose. Chat answers will cite them.</span>
+        </button>
+      ) : (
+        <>
+          <label className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-sm">
+            <span className="text-muted-foreground">Select all sources</span>
+            <Checkbox
+              checked={allChecked}
+              indeterminate={someChecked}
+              disabled={ready.length === 0}
+              onCheckedChange={(c) => onToggleAll(Boolean(c))}
+              aria-label="Select all sources"
+            />
+          </label>
+
+          <ul
+            className={cn(
+              "min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3",
+              dragging && "rounded-xl bg-muted/60 ring-1 ring-primary",
+            )}
+          >
+            {docs.map((doc) => {
+              const isReady = doc.status === "ready";
+              const checked = selectedIds.includes(doc.id);
+              return (
+                <li
+                  key={doc.id}
+                  className="group/doc flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted/60"
+                >
+                  <span
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground",
+                      doc.status === "failed" && "bg-destructive/10 text-destructive",
+                    )}
+                  >
+                    {doc.status === "failed" ? (
+                      <TriangleAlert className="size-4" />
+                    ) : isReady ? (
+                      <DocIcon doc={doc} />
+                    ) : (
+                      <Spinner />
+                    )}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm" title={doc.name}>
+                      {doc.name}
+                    </p>
+                    <p
+                      className={cn(
+                        "truncate text-xs text-muted-foreground",
+                        doc.status === "failed" && "text-destructive",
+                      )}
+                    >
+                      {doc.status === "uploading" && "Uploading…"}
+                      {doc.status === "indexing" && "Indexing…"}
+                      {doc.status === "failed" && (doc.error ?? "Upload failed")}
+                      {isReady && formatBytes(doc.size)}
+                    </p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="opacity-0 transition-opacity group-hover/doc:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
+                    onClick={() => onRemove(doc.id)}
+                    aria-label={`Remove ${doc.name}`}
+                  >
+                    <Trash2 />
+                  </Button>
+
+                  <Checkbox
+                    checked={checked && isReady}
+                    disabled={!isReady}
+                    onCheckedChange={() => onToggle(doc.id)}
+                    aria-label={`Use ${doc.name} in chat`}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/components/workspace.tsx">
+"use client";
+import { documentsApi, type RemoteDoc } from "@/features/documents/documents-api";
+import { useEffect, useState } from "react";
+import type { UIMessage } from "ai";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// import { documentsApi } from "@/featuresdocuments/uploaddocuments/upload-api";
+import { ChatView } from "./chat-view";
+import { ChatsPanel } from "./chats-panel";
+import { SourcesPanel } from "./sources-panel";
+import { newId, sessionsApi } from "../sessions-api";
+import { useSessions } from "../use-sessions";
+import { useHydrated, useStored } from "../storage";
+import type { ChatUser, DocItem, DocStatus, SessionSummary } from "../types";
+
+const EMPTY_DOCS: DocItem[] = [];
+const EMPTY_IDS: string[] = [];
+const NEW_CHAT = "New chat";
+
+type Pending = { kind: "chat" | "doc"; id: string } | null;
+
+const errMsg = (e: unknown, fallback: string) =>
+  e instanceof Error ? e.message : fallback;
+
+
+
+
+export function Workspace({ user }: { user: ChatUser }) {
+  // Chat sessions live on the backend. Only the file list/selection is local for now.
+  const { sessions, error: sessionsError, refresh, remove } = useSessions();
+  const [docs, updateDocs] = useStored<DocItem[]>(
+    `rag:${user.id}:docs`,
+    EMPTY_DOCS,
+  );
+  const [selected, updateSelected] = useStored<string[]>(
+    `rag:${user.id}:selected`,
+    EMPTY_IDS,
+  );
+  const hydrated = useHydrated();
+
+  // First screen is an unsaved draft; the backend creates the session on its first message.
+  const [boot] = useState(() => {
+    const id = newId();
+    return { id, initial: { [id]: [] as UIMessage[] } };
+  });
+  const [activeId, setActiveId] = useState(boot.id);
+  // Messages each opened session starts from (fetched from the backend, or [] for a draft).
+  const [initial, setInitial] = useState<Record<string, UIMessage[]>>(
+    boot.initial,
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pending, setPending] = useState<Pending>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const readyDocs = docs.filter((d) => d.status === "ready");
+  const selectedIds = selected.filter((id) =>
+    readyDocs.some((d) => d.id === id),
+  );
+  const selectedDocs = readyDocs.filter((d) => selectedIds.includes(d.id));
+
+  const activeSession = sessions.find((s) => s.id === activeId);
+  const isDraft = !activeSession;
+  const listItems: SessionSummary[] = isDraft
+    ? [{ id: activeId, title: NEW_CHAT, updatedAt: 0 }, ...sessions]
+    : sessions;
+
+  // Load history for a past session the first time it is opened.
+  useEffect(() => {
+    if (initial[activeId] !== undefined) return;
+    let cancelled = false;
+    sessionsApi
+      .get(activeId)
+      .then((messages) => {
+        if (!cancelled) setInitial((p) => ({ ...p, [activeId]: messages }));
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setNotice(`Could not open this chat: ${errMsg(e, "unknown error")}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, initial]);
+
+  /* ---------- chats ---------- */
+
+  function startFresh() {
+    const id = newId();
+    setInitial((p) => ({ ...p, [id]: [] }));
+    setActiveId(id);
+  }
+
+  function newChat() {
+    setNotice(null);
+    setSidebarOpen(false);
+    // Already on an empty draft: nothing to create.
+    if (isDraft && (initial[activeId]?.length ?? 0) === 0) return;
+    startFresh();
+  }
+
+  function openSession(id: string) {
+    setNotice(null);
+    setActiveId(id);
+    setSidebarOpen(false);
+  }
+
+  // Called by ChatView when a turn finishes: keep the local copy fresh and pull the
+  // backend's list so a new session, its title and ordering show up in the sidebar.
+  function onTurnFinished(sessionId: string, messages: UIMessage[]) {
+    setInitial((p) => ({ ...p, [sessionId]: messages }));
+    void refresh();
+  }
+
+  /* ---------- sources ---------- */
+
+  function setStatus(id: string, status: DocStatus, error?: string) {
+    updateDocs((p) =>
+      p.map((d) => (d.id === id ? { ...d, status, error } : d)),
+    );
+  }
+
+  async function addFiles(files: File[]) {
+    // 1. Show optimistic "uploading" placeholders with temporary client IDs.
+    const placeholders: DocItem[] = files.map((f) => ({
+      id: newId(), // temp id, swapped after server replies
+      name: f.name,
+      size: f.size,
+      mime: f.type,
+      addedAt: Date.now(),
+      status: "uploading",
+    }));
+    updateDocs((p) => [...placeholders, ...p]);
+
+    await Promise.all(
+      files.map(async (file, i) => {
+        const temp = placeholders[i];
+        try {
+          const { document_id } = await documentsApi.upload(file);
+
+          // Replace the placeholder with the server-issued id and "indexing" status.
+          updateDocs((p) =>
+            p.map((d) =>
+              d.id === temp.id
+                ? { ...d, id: document_id, status: "indexing" }
+                : d,
+            ),
+          );
+        } catch (e) {
+          setStatus(temp.id, "failed", errMsg(e, "Upload failed"));
+        }
+      }),
+    );
+  }
+
+  async function removeDoc(id: string) {
+    try {
+      await documentsApi.remove(id);
+    } catch (e) {
+      setNotice(`Could not remove the file: ${errMsg(e, "unknown error")}`);
+      return;
+    }
+    updateDocs((p) => p.filter((d) => d.id !== id));
+    updateSelected((p) => p.filter((x) => x !== id));
+  }
+
+  /* ---------- delete confirmation ---------- */
+
+  async function confirmDelete() {
+    if (!pending) return;
+    const target = pending;
+    setPending(null);
+
+    if (target.kind === "doc") {
+      await removeDoc(target.id);
+      return;
+    }
+
+    try {
+      // A draft was never saved on the backend, so there is nothing to delete there.
+      if (sessions.some((s) => s.id === target.id)) await remove(target.id);
+    } catch (e) {
+      setNotice(`Could not delete the chat: ${errMsg(e, "unknown error")}`);
+      return;
+    }
+    setInitial((p) => {
+      const next = { ...p };
+      delete next[target.id];
+      return next;
+    });
+    if (activeId === target.id) startFresh();
+  }
+
+  const pendingName =
+    pending?.kind === "chat"
+      ? (listItems.find((s) => s.id === pending.id)?.title ?? NEW_CHAT)
+      : docs.find((d) => d.id === pending?.id)?.name;
+
+  const banner =
+    notice ?? (sessionsError ? `Could not load chats: ${sessionsError}` : null);
+  const activeMessages = initial[activeId];
+
+  useEffect(() => {
+  const pending = docs.filter(
+    (d) => d.status === "uploading" || d.status === "indexing",
+  );
+  if (pending.length === 0) return;
+
+  const timer = setInterval(async () => {
+    try {
+      const remote = await documentsApi.list();
+      updateDocs((prev) =>
+        prev.map((d) => {
+          const match = remote.find((r) => r.id === d.id);
+          if (!match) return d;
+          // Server's status wins. Also pull the error message if any.
+          return {
+            ...d,
+            status:
+              match.status === "pending" || match.status === "processing"
+                ? "indexing"
+                : match.status,
+            error: match.error,
+          };
+        }),
+      );
+
+      // Auto-select files that just became ready.
+      const newlyReady = remote
+        .filter((r) => r.status === "ready")
+        .map((r) => r.id);
+      if (newlyReady.length) {
+        updateSelected((p) => [...new Set([...p, ...newlyReady])]);
+      }
+    } catch {
+      /* network hiccup — try again next tick */
+    }
+  }, 2500);
+
+  return () => clearInterval(timer);
+}, [docs, updateDocs, updateSelected]);
+
+  const sidebar = (
+    <Tabs defaultValue="sources" className="h-full min-h-0 gap-0">
+      <TabsList className="m-3 mb-0 w-[calc(100%-1.5rem)]">
+        <TabsTrigger value="sources">Sources</TabsTrigger>
+        <TabsTrigger value="chats">Chats</TabsTrigger>
+      </TabsList>
+      <TabsContent value="sources" className="min-h-0">
+        <SourcesPanel
+          docs={docs}
+          selectedIds={selectedIds}
+          onToggle={(id) =>
+            updateSelected((p) =>
+              p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
+            )
+          }
+          onToggleAll={(checked) =>
+            updateSelected(() => (checked ? readyDocs.map((d) => d.id) : []))
+          }
+          onAddFiles={addFiles}
+          onRemove={(id) => setPending({ kind: "doc", id })}
+        />
+      </TabsContent>
+      <TabsContent value="chats" className="min-h-0">
+        <ChatsPanel
+          chats={listItems}
+          activeId={activeId}
+          onSelect={openSession}
+          onNew={newChat}
+          onDelete={(id) => setPending({ kind: "chat", id })}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+
+  
+
+  return (
+    <div className="flex h-dvh overflow-hidden bg-background">
+      <aside className="hidden w-80 shrink-0 border-e bg-sidebar text-sidebar-foreground md:block">
+        {sidebar}
+      </aside>
+
+      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+        <SheetContent
+          side="left"
+          className="w-[85%] bg-sidebar p-0 md:hidden"
+          showCloseButton={false}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Sources and chats</SheetTitle>
+          </SheetHeader>
+          {sidebar}
+        </SheetContent>
+      </Sheet>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        {banner && (
+          <div className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            {banner}
+          </div>
+        )}
+        <div className="min-h-0 flex-1">
+          {hydrated && activeMessages !== undefined ? (
+            <ChatView
+              key={activeId}
+              sessionId={activeId}
+              title={activeSession?.title ?? NEW_CHAT}
+              initialMessages={activeMessages}
+              user={user}
+              selectedDocs={selectedDocs}
+              onTurnFinished={onTurnFinished}
+              onOpenSidebar={() => setSidebarOpen(true)}
+              onRequestDelete={() => setPending({ kind: "chat", id: activeId })}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <Spinner className="size-5" />
+            </div>
+          )}
+        </div>
+      </main>
+
+      <AlertDialog
+        open={pending !== null}
+        onOpenChange={(open) => !open && setPending(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pending?.kind === "doc"
+                ? "Remove this source?"
+                : "Delete this chat?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pending?.kind === "doc"
+                ? `“${pendingName}” will be removed from every chat. This can't be undone.`
+                : `“${pendingName}” and its messages will be deleted. This can't be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>
+              {pending?.kind === "doc" ? "Remove source" : "Delete chat"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+</file>
+
+<file path="src/features/chat/sessions-api.ts">
+import type { UIMessage } from "ai";
+import type { SessionSummary } from "./types";
+
+/**
+ * Session API -> your FastAPI backend, through the existing
+ * /api/backend/[...path] proxy (it attaches the Auth.js bearer token).
+ *
+ * ASSUMED CONTRACT (edit ROUTES / normalisers below to match your backend):
+ *   GET    /api/sessions        -> [{ session_id, title, updated_at }]
+ *   GET    /api/sessions/{id}   -> { messages: [{ role, content }] }   (or UIMessage[] with `parts`)
+ *   DELETE /api/sessions/{id}
+ * The proxy maps /api/backend/<path> -> BACKEND_URL/<path>.
+ */
+const PROXY = "/api/backend";
+const ROUTES = {
+  list: "/api/sessions",
+  one: (id: string) => `/api/sessions/${encodeURIComponent(id)}`,
+};
+
+type Raw = Record<string, unknown>;
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${PROXY}${path}`, { cache: "no-store", ...init });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = (await res.json()) as Raw;
+      detail = typeof body.detail === "string" ? body.detail : "";
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/** crypto.randomUUID only exists on localhost/HTTPS; fall back so "New chat" never throws. */
+export function newId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+function toMs(v: unknown): number {
+  if (typeof v === "number") return v < 1e12 ? v * 1000 : v;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
+
+function toSummary(r: Raw): SessionSummary {
+  return {
+    id: String(r.session_id ?? r.id ?? r.sessionId ?? ""),
+    title: String(r.title ?? r.name ?? "").trim() || "New chat",
+    updatedAt: toMs(r.updated_at ?? r.updatedAt ?? r.created_at ?? r.createdAt),
+  };
+}
+
+function toRole(v: unknown): "user" | "assistant" | null {
+  if (v === "user" || v === "human") return "user";
+  if (v === "assistant" || v === "ai") return "assistant";
+  return null; // system/tool rows are not shown
+}
+
+function toUIMessage(r: Raw): UIMessage | null {
+  const role = toRole(r.role ?? r.type);
+  if (!role) return null;
+  const id = String(r.id ?? newId());
+  if (Array.isArray(r.parts)) return { id, role, parts: r.parts } as UIMessage;
+  const text = typeof r.content === "string" ? r.content : typeof r.text === "string" ? r.text : "";
+  return { id, role, parts: [{ type: "text", text }] };
+}
+
+export const sessionsApi = {
+  async list(): Promise<SessionSummary[]> {
+    const data = await request<unknown>(ROUTES.list);
+    const rows = Array.isArray(data) ? data : ((data as Raw)?.sessions ?? (data as Raw)?.items ?? []);
+    return (rows as Raw[])
+      .map(toSummary)
+      .filter((s) => s.id)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+
+  async get(id: string): Promise<UIMessage[]> {
+    const data = await request<unknown>(ROUTES.one(id));
+    const rows = Array.isArray(data) ? data : ((data as Raw)?.messages ?? (data as Raw)?.history ?? []);
+    return (rows as Raw[]).map(toUIMessage).filter((m): m is UIMessage => m !== null);
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<void>(ROUTES.one(id), { method: "DELETE" });
+  },
+};
+</file>
+
+<file path="src/features/chat/storage.ts">
+"use client";
+
+import { useCallback, useSyncExternalStore } from "react";
+
+/**
+ * Tiny localStorage-backed store (SSR safe). Swap for real API calls once
+ * the backend exists; components only see `[value, update]`.
+ */
+const listeners = new Set<() => void>();
+const cache = new Map<string, unknown>();
+
+function load<T>(key: string, fallback: T): T {
+  if (cache.has(key)) return cache.get(key) as T;
+  let value = fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) value = JSON.parse(raw) as T;
+  } catch {
+    /* corrupted or unavailable storage: use fallback */
+  }
+  cache.set(key, value);
+  return value;
+}
+
+export function useStored<T>(key: string, fallback: T) {
+  const value = useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => {
+        listeners.delete(cb);
+      };
+    },
+    () => load(key, fallback),
+    () => fallback,
+  );
+
+  const update = useCallback(
+    (fn: (prev: T) => T) => {
+      const next = fn(load(key, fallback));
+      cache.set(key, next);
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        /* quota exceeded: keep in-memory value */
+      }
+      listeners.forEach((l) => l());
+    },
+    [key, fallback],
+  );
+
+  return [value, update] as const;
+}
+
+export function useHydrated() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
+</file>
+
+<file path="src/features/chat/types.ts">
+export interface ChatUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string;
+}
+
+/** One row in the Chats tab. Comes from the backend session list. */
+export interface SessionSummary {
+  id: string; // the backend session_id
+  title: string;
+  updatedAt: number; // ms
+}
+
+export type DocStatus = "uploading" | "indexing" | "ready" | "failed";
+
+export interface DocItem {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  addedAt: number;
+  status: DocStatus;
+  error?: string;
+}
+</file>
+
+<file path="src/features/chat/use-sessions.ts">
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { sessionsApi } from "./sessions-api";
+import type { SessionSummary } from "./types";
+
+export function useSessions() {
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setSessions(await sessionsApi.list());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load chats");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const remove = useCallback(async (id: string) => {
+    await sessionsApi.remove(id);
+    setSessions((p) => p.filter((s) => s.id !== id));
+  }, []);
+
+  return { sessions, loading, error, refresh, remove };
+}
+</file>
+
+<file path="src/features/documents/documents-api.ts">
+/**
+ * Document API — talks to Next.js proxy routes, which forward to FastAPI.
+ *
+ *   POST   documents/upload              multipart "file"  → upload + start ingestion
+ *   GET    documents/upload              → list this user's files with status
+ *   DELETE documents/upload/:id          → delete file + vectors
+ */
+
+export interface RemoteDoc {
+  id: string;
+  filename: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  size: number;
+  error?: string;
+  created_at?: string;
+}
+
+async function readError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: string };
+    return body.detail ?? `Request failed (${res.status})`;
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+}
+
+export const documentsApi = {
+  async upload(file: File): Promise<{ document_id: string; status: string }> {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/documents", { method: "POST", body });
+    if (!res.ok) throw new Error(await readError(res));
+    return (await res.json()) as { document_id: string; status: string };
+  },
+
+  async list(): Promise<RemoteDoc[]> {
+    const res = await fetch("/api/documents", { cache: "no-store" });
+    if (!res.ok) throw new Error(await readError(res));
+    const data = (await res.json()) as RemoteDoc[] | { documents: RemoteDoc[] };
+    return Array.isArray(data) ? data : data.documents;
+  },
+
+  async remove(id: string): Promise<void> {
+    const res = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(await readError(res));
+  },
+};
+</file>
+
+<file path="src/hooks/use-mobile.ts">
+import { useSyncExternalStore } from "react";
+
+const QUERY = "(max-width: 767px)";
+
+export function useIsMobile() {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(QUERY);
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(QUERY).matches,
+    () => false,
+  );
+}
+</file>
+
+<file path="src/lib/utils.ts">
+export { cn } from "cn"
+
+export function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+</file>
+
+<file path="src/auth.ts">
+import NextAuth from "next-auth";
+import GitHubProvider from "next-auth/providers/github";
+// in the next line import the google provider from next-auth/providers/google
+import GoogleProvider from "next-auth/providers/google";
+
+
+
+
+
+
+
+export const {handlers , signIn , signOut , auth} = NextAuth({
+  providers: [
+    GitHubProvider({
+      clientId: process.env.GITHUB_ID as string,
+      clientSecret: process.env.GITHUB_SECRET as string,
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_ID as string,
+      clientSecret: process.env.GOOGLE_SECRET as string,
+    }),
+    ],session: {
+    strategy: "jwt",
+  },
+  callbacks: {
+    // 1. This runs when the user logs in
+    async jwt({ token, account, user }) {
+      if (account && user) {
+        // Now it will look like: "github:304984153" or "google:10423..."
+        token.sub = `${account.provider}:${account.providerAccountId}`; 
+      }
+      return token;
+    },
+    // 2. This makes sure the stable ID is available in the session
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub; 
+      }
+      return session;
+    },
+  },
+})
+</file>
+
+</files>

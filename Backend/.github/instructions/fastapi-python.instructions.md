@@ -17,7 +17,7 @@ applyTo: "**/*.py"
 
 - Put shared configuration, security, and database infrastructure in `src/core/`.
 - Keep chat HTTP routes and domain code in `src/features/chat/`.
-- Keep document HTTP routes and domain code in `src/features/documents/`.
+- Keep document HTTP routes and domain code in `src/featuresdocuments/upload/`.
 - Keep request and response models in each feature's `schemas.py` module.
 - Keep ORM models in each feature's `models.py` module.
 - Keep feature business logic in each feature's `service.py` module.

@@ -10,7 +10,7 @@ The project uses a `src/` layout and `uv` for packaging and commands.
 - `src/main.py`: FastAPI application entry point (`app`).
 - `src/core/`: application configuration, security, dependencies, and database infrastructure.
 - `src/features/chat/`: chat models, schemas, services, and router.
-- `src/features/documents/`: document models, schemas, services, and router.
+- `src/featuresdocuments/upload/`: document models, schemas, services, and router.
 - `pyproject.toml`: project metadata, dependencies, and the `chat-app-rag` command.
 
 ## Development Commands
