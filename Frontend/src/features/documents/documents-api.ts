@@ -1,25 +1,50 @@
 /**
- * Document API layer. Currently a stub (no backend yet).
- * When FastAPI is ready, implement these against /api/documents (Next proxy):
- *   POST   /api/documents        multipart "file"  -> index the file for this user
- *   DELETE /api/documents/:id                      -> remove file + its vectors
- *   GET    /api/documents                          -> list this user's files
+ * Document API — talks to Next.js proxy routes, which forward to FastAPI.
+ *
+ *   POST   /api/documents              multipart "file"  → upload + start ingestion
+ *   GET    /api/documents              → list this user's files with status
+ *   DELETE /api/documents/:id          → delete file + vectors
  */
+
+export interface RemoteDoc {
+  id: string;
+  filename: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  size: number;
+  error?: string;
+  created_at?: string;
+}
+
+async function readError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: string };
+    return body.detail ?? `Request failed (${res.status})`;
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+}
+
 export const documentsApi = {
-  async upload(file: File, id: string): Promise<void> {
-    void file;
-    void id;
-    // const body = new FormData();
-    // body.append("file", file);
-    // body.append("id", id);
-    // const res = await fetch("/api/documents", { method: "POST", body });
-    // if (!res.ok) throw new Error((await res.json()).detail ?? "Upload failed");
-    await new Promise((r) => setTimeout(r, 900));
+  async upload(file: File): Promise<{ document_id: string; status: string }> {
+    const body = new FormData();
+    body.append("file", file);
+
+    const res = await fetch("/api/documents", { method: "POST", body });
+    if (!res.ok) throw new Error(await readError(res));
+    return (await res.json()) as { document_id: string; status: string };
+  },
+
+  async list(): Promise<RemoteDoc[]> {
+    const res = await fetch("/api/documents", { cache: "no-store" });
+    if (!res.ok) throw new Error(await readError(res));
+    const data = (await res.json()) as RemoteDoc[] | { documents: RemoteDoc[] };
+    return Array.isArray(data) ? data : data.documents;
   },
 
   async remove(id: string): Promise<void> {
-    void id;
-    // const res = await fetch(`/api/documents/${id}`, { method: "DELETE" });
-    // if (!res.ok) throw new Error("Delete failed");
+    const res = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(await readError(res));
   },
 };

@@ -89,7 +89,8 @@ async def run_ingestion(document_id: str, file_path: str, user_id: str) -> None:
             nodes = await pipeline.arun(documents=documents, show_progress=False)
 
             # Persist docstore for future dedup
-            _save_docstore(pipeline.docstore)
+            if isinstance(pipeline.docstore, SimpleDocumentStore):
+                _save_docstore(pipeline.docstore)
 
             doc.status = "ready"
             await db.commit()

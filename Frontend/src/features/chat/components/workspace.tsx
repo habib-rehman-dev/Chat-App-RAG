@@ -12,7 +12,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { documentsApi } from "@/features/documents/documents-api";
@@ -30,13 +35,20 @@ const NEW_CHAT = "New chat";
 
 type Pending = { kind: "chat" | "doc"; id: string } | null;
 
-const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+const errMsg = (e: unknown, fallback: string) =>
+  e instanceof Error ? e.message : fallback;
 
 export function Workspace({ user }: { user: ChatUser }) {
   // Chat sessions live on the backend. Only the file list/selection is local for now.
   const { sessions, error: sessionsError, refresh, remove } = useSessions();
-  const [docs, updateDocs] = useStored<DocItem[]>(`rag:${user.id}:docs`, EMPTY_DOCS);
-  const [selected, updateSelected] = useStored<string[]>(`rag:${user.id}:selected`, EMPTY_IDS);
+  const [docs, updateDocs] = useStored<DocItem[]>(
+    `rag:${user.id}:docs`,
+    EMPTY_DOCS,
+  );
+  const [selected, updateSelected] = useStored<string[]>(
+    `rag:${user.id}:selected`,
+    EMPTY_IDS,
+  );
   const hydrated = useHydrated();
 
   // First screen is an unsaved draft; the backend creates the session on its first message.
@@ -46,13 +58,17 @@ export function Workspace({ user }: { user: ChatUser }) {
   });
   const [activeId, setActiveId] = useState(boot.id);
   // Messages each opened session starts from (fetched from the backend, or [] for a draft).
-  const [initial, setInitial] = useState<Record<string, UIMessage[]>>(boot.initial);
+  const [initial, setInitial] = useState<Record<string, UIMessage[]>>(
+    boot.initial,
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const readyDocs = docs.filter((d) => d.status === "ready");
-  const selectedIds = selected.filter((id) => readyDocs.some((d) => d.id === id));
+  const selectedIds = selected.filter((id) =>
+    readyDocs.some((d) => d.id === id),
+  );
   const selectedDocs = readyDocs.filter((d) => selectedIds.includes(d.id));
 
   const activeSession = sessions.find((s) => s.id === activeId);
@@ -71,7 +87,8 @@ export function Workspace({ user }: { user: ChatUser }) {
         if (!cancelled) setInitial((p) => ({ ...p, [activeId]: messages }));
       })
       .catch((e) => {
-        if (!cancelled) setNotice(`Could not open this chat: ${errMsg(e, "unknown error")}`);
+        if (!cancelled)
+          setNotice(`Could not open this chat: ${errMsg(e, "unknown error")}`);
       });
     return () => {
       cancelled = true;
@@ -110,28 +127,39 @@ export function Workspace({ user }: { user: ChatUser }) {
   /* ---------- sources ---------- */
 
   function setStatus(id: string, status: DocStatus, error?: string) {
-    updateDocs((p) => p.map((d) => (d.id === id ? { ...d, status, error } : d)));
+    updateDocs((p) =>
+      p.map((d) => (d.id === id ? { ...d, status, error } : d)),
+    );
   }
 
   async function addFiles(files: File[]) {
-    const items: DocItem[] = files.map((f) => ({
-      id: newId(),
+    // 1. Show optimistic "uploading" placeholders with temporary client IDs.
+    const placeholders: DocItem[] = files.map((f) => ({
+      id: newId(), // temp id, swapped after server replies
       name: f.name,
       size: f.size,
       mime: f.type,
       addedAt: Date.now(),
       status: "uploading",
     }));
-    updateDocs((p) => [...items, ...p]);
+    updateDocs((p) => [...placeholders, ...p]);
 
     await Promise.all(
-      items.map(async (item, i) => {
+      files.map(async (file, i) => {
+        const temp = placeholders[i];
         try {
-          await documentsApi.upload(files[i], item.id);
-          setStatus(item.id, "ready");
-          updateSelected((p) => [...new Set([...p, item.id])]);
+          const { document_id } = await documentsApi.upload(file);
+
+          // Replace the placeholder with the server-issued id and "indexing" status.
+          updateDocs((p) =>
+            p.map((d) =>
+              d.id === temp.id
+                ? { ...d, id: document_id, status: "indexing" }
+                : d,
+            ),
+          );
         } catch (e) {
-          setStatus(item.id, "failed", errMsg(e, "Upload failed"));
+          setStatus(temp.id, "failed", errMsg(e, "Upload failed"));
         }
       }),
     );
@@ -180,7 +208,8 @@ export function Workspace({ user }: { user: ChatUser }) {
       ? (listItems.find((s) => s.id === pending.id)?.title ?? NEW_CHAT)
       : docs.find((d) => d.id === pending?.id)?.name;
 
-  const banner = notice ?? (sessionsError ? `Could not load chats: ${sessionsError}` : null);
+  const banner =
+    notice ?? (sessionsError ? `Could not load chats: ${sessionsError}` : null);
   const activeMessages = initial[activeId];
 
   const sidebar = (
@@ -194,9 +223,13 @@ export function Workspace({ user }: { user: ChatUser }) {
           docs={docs}
           selectedIds={selectedIds}
           onToggle={(id) =>
-            updateSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+            updateSelected((p) =>
+              p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
+            )
           }
-          onToggleAll={(checked) => updateSelected(() => (checked ? readyDocs.map((d) => d.id) : []))}
+          onToggleAll={(checked) =>
+            updateSelected(() => (checked ? readyDocs.map((d) => d.id) : []))
+          }
           onAddFiles={addFiles}
           onRemove={(id) => setPending({ kind: "doc", id })}
         />
@@ -215,10 +248,16 @@ export function Workspace({ user }: { user: ChatUser }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      <aside className="hidden w-80 shrink-0 border-e bg-sidebar text-sidebar-foreground md:block">{sidebar}</aside>
+      <aside className="hidden w-80 shrink-0 border-e bg-sidebar text-sidebar-foreground md:block">
+        {sidebar}
+      </aside>
 
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="w-[85%] bg-sidebar p-0 md:hidden" showCloseButton={false}>
+        <SheetContent
+          side="left"
+          className="w-[85%] bg-sidebar p-0 md:hidden"
+          showCloseButton={false}
+        >
           <SheetHeader className="sr-only">
             <SheetTitle>Sources and chats</SheetTitle>
           </SheetHeader>
@@ -228,7 +267,9 @@ export function Workspace({ user }: { user: ChatUser }) {
 
       <main className="flex min-w-0 flex-1 flex-col">
         {banner && (
-          <div className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">{banner}</div>
+          <div className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            {banner}
+          </div>
         )}
         <div className="min-h-0 flex-1">
           {hydrated && activeMessages !== undefined ? (
@@ -251,10 +292,17 @@ export function Workspace({ user }: { user: ChatUser }) {
         </div>
       </main>
 
-      <AlertDialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
+      <AlertDialog
+        open={pending !== null}
+        onOpenChange={(open) => !open && setPending(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{pending?.kind === "doc" ? "Remove this source?" : "Delete this chat?"}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pending?.kind === "doc"
+                ? "Remove this source?"
+                : "Delete this chat?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pending?.kind === "doc"
                 ? `“${pendingName}” will be removed from every chat. This can't be undone.`

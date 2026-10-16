@@ -1,6 +1,4 @@
 import hashlib
-import os
-import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import get_settings
-from src.core.database import SessionLocal, get_db
+from src.core.database import get_db
 from src.core.security import CurrentUser, get_chat_user
 from src.features.documents.ingestion import run_ingestion
 
@@ -28,8 +26,8 @@ def _hash_file(content: bytes) -> str:
 
 @router.post("/documents/upload")
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: CurrentUser = CHAT_USER_DEPENDENCY,
     db: AsyncSession = DB_DEPENDENCY,
 ):
@@ -40,8 +38,9 @@ async def upload_document(
     file_hash = _hash_file(content)
 
     # Dedup check: same user + same content hash
-    from src.features.documents.models import Document
     from sqlalchemy import select
+
+    from src.features.documents.models import Document
 
     result = await db.execute(
         select(Document).where(
